@@ -8,6 +8,9 @@ from types import SimpleNamespace
 
 
 class DownstreamChannel(SimpleNamespace):
+    """
+    Container for downstream channel information.
+    """
     channel_id = None
     frequency = None
     power = None
@@ -18,6 +21,9 @@ class DownstreamChannel(SimpleNamespace):
 
 
 class UpstreamChannel(SimpleNamespace):
+    """
+    Container for upstream channel information.
+    """
     channel_id = None
     frequency = None
     power = None
@@ -25,6 +31,9 @@ class UpstreamChannel(SimpleNamespace):
 
 
 class LogRecord(SimpleNamespace):
+    """
+    Container for network log records.
+    """
     timestamp = None
     level = None
     message = None

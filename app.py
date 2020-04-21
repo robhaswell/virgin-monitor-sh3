@@ -4,7 +4,6 @@ Monitor a Virgin SuperHub 3.0
 import asyncio
 import logging
 import os
-import sys
 import time
 from datetime import datetime
 
@@ -37,19 +36,19 @@ async def amain():
 
     db_path = os.path.expanduser(args.db_path)
 
-    db = aiosqlite.connect(db_path, isolation_level=None)
+    sql3 = aiosqlite.connect(db_path, isolation_level=None)
     session = aiohttp.ClientSession()
 
-    async with session, db:
+    async with session, sql3:
         # Look to see if our database is initialised
-        cursor = await db.execute("""
+        cursor = await sql3.execute("""
             SELECT name
             FROM sqlite_master
             WHERE type = 'table';
         """)
         if not await cursor.fetchall():
             # No rows, initialise the database
-            await initialise_db(db)
+            await initialise_db(sql3)
 
         while True:
             start = time.time()
@@ -64,7 +63,7 @@ async def amain():
 
             # Now store the data
             for channel, row in stats['downstream_channels'].items():
-                await db.execute("""
+                await sql3.execute("""
                     INSERT INTO downstream_channels (timestamp, channel, channel_id, frequency,
                         power, snr, rxmer, pre_rs_errors, post_rs_errors)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -72,7 +71,7 @@ async def amain():
                       row.power, row.snr, row.rxmer, row.pre_rs_errors, row.post_rs_errors))
 
             for channel, row in stats['upstream_channels'].items():
-                await db.execute("""
+                await sql3.execute("""
                     INSERT INTO upstream_channels (timestamp, channel, channel_id, frequency,
                         power, symbol_rate)
                     VALUES (?, ?, ?, ?, ?, ?)
@@ -80,7 +79,7 @@ async def amain():
                       row.power, row.symbol_rate))
 
             for log_record in stats['network_log']:
-                await db.execute("""
+                await sql3.execute("""
                     INSERT OR IGNORE INTO network_log (timestamp, level, message)
                     VALUES (?, ?, ?)
                 """, (log_record.timestamp, log_record.level, log_record.message))
@@ -88,11 +87,11 @@ async def amain():
             await asyncio.sleep(10)
 
 
-async def initialise_db(db):
+async def initialise_db(sql3):
     """
     Create sqlite schema.
     """
-    await db.execute("""
+    await sql3.execute("""
         CREATE TABLE network_log (
             timestamp timestamp,
             level int,
@@ -102,7 +101,7 @@ async def initialise_db(db):
         )
     """)
 
-    await db.execute("""
+    await sql3.execute("""
         CREATE TABLE downstream_channels (
             timestamp timestamp,
             channel int,
@@ -118,7 +117,7 @@ async def initialise_db(db):
         )
     """)
 
-    await db.execute("""
+    await sql3.execute("""
         CREATE TABLE upstream_channels (
             timestamp timestamp,
             channel int,

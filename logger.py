@@ -3,7 +3,6 @@ Logger which logs JSON to stdout.
 """
 import logging
 import sys
-from collections import OrderedDict
 
 from pythonjsonlogger import jsonlogger
 
