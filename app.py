@@ -105,7 +105,7 @@ async def data(request: Request):
     """
     Get chart data.
     """
-    start = datetime.utcnow() - timedelta(minutes=10)
+    start = datetime.utcnow() - timedelta(days=1)
     data = {
         "downstream_power": defaultdict(list)
     }
@@ -117,7 +117,8 @@ async def data(request: Request):
             SELECT timestamp, channel, power FROM downstream_channels
             WHERE timestamp > ?
         """, (start,))
-        async for row in cursor:
+        rows = await cursor.fetchall()
+        for row in rows:
             datetime_without_microtime = row['timestamp'][:-7]
             data['downstream_power'][row['channel']].append(
                 dict(x=datetime_without_microtime, y=row['power']))
@@ -138,8 +139,12 @@ async def monitor_sh3(app):
     async with app['http'] as http, app['sql3_connect']() as sql3:
         while True:
             start = time.time()
-            async with http.get(args.url) as response:
-                content = await response.read()
+            try:
+                async with http.get(args.url) as response:
+                    content = await response.read()
+            except aiohttp.client_exceptions.ClientConnectorError:
+                # Retry immediately
+                continue
             end = time.time()
             log.info("got router status", extra=dict(request_time=end-start))
 
