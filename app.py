@@ -1,9 +1,15 @@
 """
 Monitor a Virgin SuperHub 3.0
+
+Development:
+
+1. pip install aiohttp-devtools
+2. adev runserver app.py
 """
 import asyncio
 import logging
 import os
+import sys
 import time
 from datetime import datetime
 
@@ -11,6 +17,9 @@ import aiohttp
 import aiosqlite
 import configargparse
 import yaml
+from aiohttp import web
+from aiohttp.web_request import Request
+from aiohttp.web_response import Response
 
 from logger import start_logger
 from sh3 import parse_router_status
@@ -18,7 +27,30 @@ from sh3 import parse_router_status
 ENDPOINT_URL = "http://192.168.100.1/getRouterStatus"
 
 
-async def amain():
+async def start_monitor(app):
+    """ Start background tasks. """
+    # Look to see if our database is initialised
+    async with app['sql3_connect']() as sql3:
+        cursor = await sql3.execute("""
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table';
+        """)
+        if not await cursor.fetchall():
+            # No rows, initialise the database
+            await initialise_db(sql3)
+
+    # Start the task
+    app['monitor'] = asyncio.create_task(monitor_sh3(app))
+
+
+async def cleanup(app):
+    """ Cleanup. """
+    app['monitor'].cancel()
+    await app['monitor']
+
+
+def create_app():
     """
     Main asynchronous program.
     """
@@ -32,27 +64,50 @@ async def amain():
     parser.add("-i", "--interval", env_var="POLL_INTERVAL", default=10,
                help="poll interval (seconds)", type=int)
     parser.add("-u", "--url", env_var="URL", default=ENDPOINT_URL, help="Endpoint URL")
-    args = parser.parse_args()
+
+    argv = sys.argv[2:]
+    args = parser.parse_args(argv)
 
     db_path = os.path.expanduser(args.db_path)
 
-    sql3 = aiosqlite.connect(db_path, isolation_level=None)
-    session = aiohttp.ClientSession()
+    http = aiohttp.ClientSession()
 
-    async with session, sql3:
-        # Look to see if our database is initialised
-        cursor = await sql3.execute("""
-            SELECT name
-            FROM sqlite_master
-            WHERE type = 'table';
-        """)
-        if not await cursor.fetchall():
-            # No rows, initialise the database
-            await initialise_db(sql3)
+    app = web.Application()
+    app.update(
+        args=args,
+        http=http,
+        sql3_connect=lambda: aiosqlite.connect(db_path, isolation_level=None),
+        log=log
+    )
 
+    app.on_startup.append(start_monitor)
+    app.on_cleanup.append(cleanup)
+
+    # Web routes
+    app.add_routes([web.static('/js', "web/js")])
+    app.router.add_get('/', index)
+    return app
+
+
+async def index(request: Request):
+    """
+    Web root page.
+    """
+    output = open("web/index.html").read()
+    return Response(text=output, content_type="text/html")
+
+
+async def monitor_sh3(app):
+    """
+    Background task to collect telemetry on the SH3.
+    """
+    args = app['args']
+    log = app['log']
+
+    async with app['http'] as http, app['sql3_connect']() as sql3:
         while True:
             start = time.time()
-            async with session.get(args.url) as response:
+            async with http.get(args.url) as response:
                 content = await response.read()
             end = time.time()
             log.info("got router status", extra=dict(request_time=end-start))
@@ -131,5 +186,13 @@ async def initialise_db(sql3):
     """)
 
 
+def main():
+    """
+    Start the application.
+    """
+    app = create_app()
+    web.run_app(app, port=8080, print=app['log'].info)
+
+
 if __name__ == "__main__":
-    asyncio.run(amain())
+    main()
