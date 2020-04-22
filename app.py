@@ -107,24 +107,57 @@ async def data(request: Request):
     """
     start = datetime.utcnow() - timedelta(days=1)
     data = {
-        "downstream_power": defaultdict(list)
+        "downstream_power": defaultdict(list),
+        "downstream_snr": defaultdict(list),
+        "downstream_rxmer": defaultdict(list),
+        "upstream_power": defaultdict(list),
+        "network_log_events": list,
     }
-    datetime_points = set()
 
     async with request.app['sql3_connect']() as sql3:
         sql3.row_factory = sqlite3.Row
+
+        # Fetch downstream statistics
         cursor = await sql3.execute("""
-            SELECT timestamp, channel, power FROM downstream_channels
+            SELECT timestamp, channel, power, snr, rxmer FROM downstream_channels
             WHERE timestamp > ?
         """, (start,))
         rows = await cursor.fetchall()
         for row in rows:
-            datetime_without_microtime = row['timestamp'][:-7]
+            timestamp = datetime.fromisoformat(row['timestamp']).replace(microsecond=0)
             data['downstream_power'][row['channel']].append(
-                dict(x=datetime_without_microtime, y=row['power']))
-            datetime_points.add(datetime_without_microtime)
+                dict(x=timestamp.isoformat(), y=row['power']))
+            data['downstream_snr'][row['channel']].append(
+                dict(x=timestamp.isoformat(), y=row['snr']))
+            data['downstream_rxmer'][row['channel']].append(
+                dict(x=timestamp.isoformat(), y=row['rxmer']))
 
-    data['labels'] = sorted(list(datetime_points))
+        # Fetch upstream statistics
+        cursor = await sql3.execute("""
+            SELECT timestamp, channel, power FROM upstream_channels
+            WHERE timestamp > ?
+        """, (start,))
+        rows = await cursor.fetchall()
+        for row in rows:
+            timestamp = datetime.fromisoformat(row['timestamp']).replace(microsecond=0)
+            data['upstream_power'][row['channel']].append(
+                dict(x=timestamp.isoformat(), y=row['power']))
+
+        # Get the count of network log critical events
+        log_events = defaultdict(int)
+        cursor = await sql3.execute("""
+            SELECT timestamp FROM network_log
+            WHERE timestamp > ?
+                AND level >= 3
+        """, (start,))
+        rows = await cursor.fetchall()
+        for row in rows:
+            timestamp = datetime.fromisoformat(row['timestamp'])
+            timestamp = timestamp.replace(second=0, microsecond=0)
+            log_events[timestamp.isoformat()] += 1
+
+        data['network_log_events'] = [{"x": timestamp, "y": value}
+                                      for timestamp, value in log_events.items()]
 
     return web.json_response(data)
 

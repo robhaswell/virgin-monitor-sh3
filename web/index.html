@@ -15,7 +15,27 @@
 </head>
 
 <body>
-  <canvas id="canvas"></canvas>
+  <div class="tabs">
+    <ul>
+      <li class="is-active"><a href="#downstream_power">Downstream power</a></li>
+      <li><a href="#downstream_snr">Downstream SNR</a></li>
+      <li><a href="#downstream_rxmer"> Downstream RxMER</a></li>
+      <li><a href="#upstream_power">Upstream power</a></li>
+    </ul>
+  </div>
+  
+  <div id="downstream_power">
+    <canvas id="downstream_power_chart"></canvas>
+  </div>
+  <div id="downstream_snr">
+    <canvas id="downstream_snr_chart"></canvas>
+  </div>
+  <div id="downstream_rxmer">
+    <canvas id="downstream_rxmer_chart"></canvas>
+  </div>
+  <div id="upstream_power">
+    <canvas id="upstream_power_chart"></canvas>
+  </div>
 </body>
 
 </html>

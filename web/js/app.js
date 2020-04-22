@@ -29,44 +29,80 @@ document.addEventListener('DOMContentLoaded', async (event) => {
   const response = await window.fetch('/data')
   const data = await response.json()
 
-  const config = {
-    type: 'line',
-    data: {
-      labels: data.labels,
-      datasets: Object.keys(data.downstream_power).map(channel => {
-        return {
-          label: `Channel ${channel}`,
-          borderColor: channelColours[channel],
-          borderWidth: 1,
-          fill: false,
-          data: data.downstream_power[channel]
-        }
-      })
-    },
-    options: {
-      title: {text: 'Chart.js Time Scale'},
-      animation: {
-        duration: 0
+  const drawChart = (id, label) => {
+    const datasets = Object.keys(data[id]).map(channel => {
+      return {
+        label: `Channel ${channel}`,
+        borderColor: channelColours[channel],
+        borderWidth: 1,
+        fill: false,
+        data: data[id][channel],
+        yAxisID: 'y-main'
+      }
+    })
+
+    datasets.push({
+      label: 'Log events',
+      type: 'bar',
+      backgroundColor: 'rgba(0, 0, 0, 0)',
+      borderColor: 'rgba(255, 0, 0, 0.5)',
+      borderWidth: 2,
+      data: data.network_log_events,
+      yAxisID: 'y-log'
+    })
+
+    const config = {
+      type: 'line',
+      data: {
+        datasets: datasets
       },
-      scales: {
-        xAxes: [{
-          type: 'time',
-          time: {
-            // round: 'minute',
-            tooltipFormat: 'HH:mm:ss'
-          },
-          scaleLabel: {display: true, labelString: 'Date'}
-        }],
-        yAxes: [{scaleLabel: {display: true, labelString: 'value'}}]
-      },
-      elements: {
-        point: {
-          radius: 0
+      options: {
+        title: {text: 'Chart.js Time Scale'},
+        animation: {
+          duration: 0
+        },
+        scales: {
+          xAxes: [{
+            type: 'time',
+            time: {
+              // round: 'minute',
+              tooltipFormat: 'HH:mm:ss'
+            },
+            scaleLabel: {display: true, labelString: 'Time'}
+          }],
+          yAxes: [
+            {
+              scaleLabel: {
+                display: true,
+                labelString: label
+              },
+              position: 'left',
+              id: 'y-main',
+            },
+            {
+              scaleLabel: {
+                display: true,
+                labelString: 'Log events (minute)'
+              },
+              position: 'right',
+              id: 'y-log',
+            }
+          ]
+        },
+        elements: {
+          point: {
+            radius: 0
+          }
         }
       }
     }
+
+    const ctx = document.getElementById(`${id}_chart`).getContext('2d');
+    const chart = new Chart(ctx, config);
   }
 
-  const ctx = document.getElementById('canvas').getContext('2d');
-  const myLine = new Chart(ctx, config);
+  drawChart('downstream_power', 'Downstream power (dBmV)')
+  drawChart('downstream_snr', 'Downstream SNR')
+  drawChart('downstream_rxmer', 'Downstream RxMER (dB)')
+  drawChart('upstream_power', 'Upstream power (dBmV)')
 })
