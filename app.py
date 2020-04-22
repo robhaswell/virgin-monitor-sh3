@@ -9,9 +9,11 @@ Development:
 import asyncio
 import logging
 import os
+import sqlite3
 import sys
 import time
-from datetime import datetime
+from collections import defaultdict
+from datetime import datetime, timedelta
 
 import aiohttp
 import aiosqlite
@@ -85,16 +87,45 @@ def create_app():
 
     # Web routes
     app.add_routes([web.static('/js', "web/js")])
+    app.add_routes([web.static('/css', "web/css")])
     app.router.add_get('/', index)
+    app.router.add_get('/data', data)
     return app
 
 
-async def index(request: Request):
+async def index(_: Request):
     """
     Web root page.
     """
     output = open("web/index.html").read()
     return Response(text=output, content_type="text/html")
+
+
+async def data(request: Request):
+    """
+    Get chart data.
+    """
+    start = datetime.utcnow() - timedelta(minutes=10)
+    data = {
+        "downstream_power": defaultdict(list)
+    }
+    datetime_points = set()
+
+    async with request.app['sql3_connect']() as sql3:
+        sql3.row_factory = sqlite3.Row
+        cursor = await sql3.execute("""
+            SELECT timestamp, channel, power FROM downstream_channels
+            WHERE timestamp > ?
+        """, (start,))
+        async for row in cursor:
+            datetime_without_microtime = row['timestamp'][:-7]
+            data['downstream_power'][row['channel']].append(
+                dict(x=datetime_without_microtime, y=row['power']))
+            datetime_points.add(datetime_without_microtime)
+
+    data['labels'] = sorted(list(datetime_points))
+
+    return web.json_response(data)
 
 
 async def monitor_sh3(app):
