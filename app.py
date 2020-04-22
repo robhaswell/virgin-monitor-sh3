@@ -176,6 +176,7 @@ async def monitor_sh3(app):
                 async with http.get(args.url) as response:
                     content = await response.read()
             except aiohttp.client_exceptions.ClientError:
+                log.exception("client error")
                 # Retry immediately
                 continue
             end = time.time()
