@@ -52,7 +52,7 @@ async def cleanup(app):
     await app['monitor']
 
 
-def create_app():
+def create_app(main=False):
     """
     Main asynchronous program.
     """
@@ -67,7 +67,11 @@ def create_app():
                help="poll interval (seconds)", type=int)
     parser.add("-u", "--url", env_var="URL", default=ENDPOINT_URL, help="Endpoint URL")
 
-    argv = sys.argv[2:]
+    if main:
+        argv = sys.argv[1:]
+    else:
+        # Run with adev or something
+        argv = sys.argv[2:]
     args = parser.parse_args(argv)
 
     db_path = os.path.expanduser(args.db_path)
@@ -260,7 +264,7 @@ def main():
     """
     Start the application.
     """
-    app = create_app()
+    app = create_app(True)
     web.run_app(app, port=8080, print=app['log'].info)
 
 
