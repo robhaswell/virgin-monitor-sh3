@@ -52,7 +52,7 @@ async def cleanup(app):
     await app['monitor']
 
 
-def create_app(main=False):
+def create_app(is_main=False):
     """
     Main asynchronous program.
     """
@@ -67,7 +67,7 @@ def create_app(main=False):
                help="poll interval (seconds)", type=int)
     parser.add("-u", "--url", env_var="URL", default=ENDPOINT_URL, help="Endpoint URL")
 
-    if main:
+    if is_main:
         argv = sys.argv[1:]
     else:
         # Run with adev or something
@@ -79,7 +79,7 @@ def create_app(main=False):
     http = aiohttp.ClientSession()
 
     app = web.Application()
-    app.update(
+    app.update(  # pylint: disable=no-member
         args=args,
         http=http,
         sql3_connect=lambda: aiosqlite.connect(db_path, isolation_level=None),
@@ -92,12 +92,12 @@ def create_app(main=False):
     # Web routes
     app.add_routes([web.static('/js', "web/js")])
     app.add_routes([web.static('/css', "web/css")])
-    app.router.add_get('/', index)
-    app.router.add_get('/data', data)
+    app.router.add_get('/', render_index)
+    app.router.add_get('/data', render_data)
     return app
 
 
-async def index(_: Request):
+async def render_index(_: Request):
     """
     Web root page.
     """
@@ -105,7 +105,7 @@ async def index(_: Request):
     return Response(text=output, content_type="text/html")
 
 
-async def data(request: Request):
+async def render_data(request: Request):
     """
     Get chart data.
     """
