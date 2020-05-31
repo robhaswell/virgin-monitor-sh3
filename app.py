@@ -77,7 +77,7 @@ def create_app(is_main=False):
                help="Basepath for all web requests")
     parser.add("-n", "--influx-uri", env_var="INFLUX_URI", default=False,
                help="Influx URI (DSN)")
-    parser.add("-l", "--listen_port", env_var="LISTEN_PORT", default=8080,
+    parser.add("-l", "--listen-port", env_var="LISTEN_PORT", default=8080,
                help="Web server listen port")
 
     if is_main:
