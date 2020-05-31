@@ -26,7 +26,7 @@ const channelColours = {
 }
 
 document.addEventListener('DOMContentLoaded', async (event) => {
-  const response = await window.fetch('/data')
+  const response = await window.fetch('data')
   const data = await response.json()
 
   const drawChart = (id, label) => {

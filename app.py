@@ -26,6 +26,9 @@ from aiohttp.web_response import Response
 from logger import start_logger
 from sh3 import parse_router_status
 
+from influxdb import InfluxDBClient
+import jsons
+
 ENDPOINT_URL = "http://192.168.100.1/getRouterStatus"
 
 
@@ -42,8 +45,12 @@ async def start_monitor(app):
             # No rows, initialise the database
             await initialise_db(sql3)
 
+    influxclient = False
+    if app['args'].influx_uri:
+        influxclient = InfluxDBClient.from_dsn(app['args'].influx_uri)
+
     # Start the task
-    app['monitor'] = asyncio.create_task(monitor_sh3(app))
+    app['monitor'] = asyncio.create_task(monitor_sh3(app, influxclient))
 
 
 async def cleanup(app):
@@ -66,6 +73,12 @@ def create_app(is_main=False):
     parser.add("-i", "--interval", env_var="POLL_INTERVAL", default=10,
                help="poll interval (seconds)", type=int)
     parser.add("-u", "--url", env_var="URL", default=ENDPOINT_URL, help="Endpoint URL")
+    parser.add("-b", "--web-base", env_var="WEB_BASE", default="/",
+               help="Basepath for all web requests")
+    parser.add("-n", "--influx-uri", env_var="INFLUX_URI", default=False,
+               help="Influx URI (DSN)")
+    parser.add("-l", "--listen_port", env_var="LISTEN_PORT", default=8080,
+               help="Web server listen port")
 
     if is_main:
         argv = sys.argv[1:]
@@ -90,10 +103,10 @@ def create_app(is_main=False):
     app.on_cleanup.append(cleanup)
 
     # Web routes
-    app.add_routes([web.static('/js', "web/js")])
-    app.add_routes([web.static('/css', "web/css")])
-    app.router.add_get('/', render_index)
-    app.router.add_get('/data', render_data)
+    app.add_routes([web.static(f"{args.web_base}/js", "web/js")])
+    app.add_routes([web.static(f"{args.web_base}/css", "web/css")])
+    app.router.add_get(f"{args.web_base}/", render_index)
+    app.router.add_get(f"{args.web_base}/data", render_data)
     return app
 
 
@@ -166,7 +179,7 @@ async def render_data(request: Request):
     return web.json_response(data)
 
 
-async def monitor_sh3(app):
+async def monitor_sh3(app, influxclient):
     """
     Background task to collect telemetry on the SH3.
     """
@@ -191,6 +204,8 @@ async def monitor_sh3(app):
             now = datetime.utcnow()
 
             # Now store the data
+            influxitems = []
+
             for channel, row in stats['downstream_channels'].items():
                 await sql3.execute("""
                     INSERT INTO downstream_channels (timestamp, channel, channel_id, frequency,
@@ -198,6 +213,14 @@ async def monitor_sh3(app):
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (now, channel, row.channel_id, row.frequency,
                       row.power, row.snr, row.rxmer, row.pre_rs_errors, row.post_rs_errors))
+                influxitems.append({
+                    "measurement": "downstream",
+                    "tags": {
+                        "channel_id": channel
+                    },
+                    "time": now,
+                    "fields": row
+                })
 
             for channel, row in stats['upstream_channels'].items():
                 await sql3.execute("""
@@ -206,12 +229,23 @@ async def monitor_sh3(app):
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (now, channel, row.channel_id, row.frequency,
                       row.power, row.symbol_rate))
+                influxitems.append({
+                    "measurement": "upstream",
+                    "tags": {
+                        "channel_id": channel
+                    },
+                    "time": now,
+                    "fields": row
+                })
 
             for log_record in stats['network_log']:
                 await sql3.execute("""
                     INSERT OR IGNORE INTO network_log (timestamp, level, message)
                     VALUES (?, ?, ?)
                 """, (log_record.timestamp, log_record.level, log_record.message))
+
+            if influxclient:
+                influxclient.write_points(jsons.dump(influxitems))
 
             await asyncio.sleep(10)
 
@@ -265,7 +299,7 @@ def main():
     Start the application.
     """
     app = create_app(True)
-    web.run_app(app, port=8080, print=app['log'].info)
+    web.run_app(app, port=app['args'].listen_port, print=app['log'].info)
 
 
 if __name__ == "__main__":
